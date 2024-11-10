@@ -1,0 +1,133 @@
+# Instalando Biblioteca pyhton para conexão ao SQL Server
+pip install pyodbc
+
+#conexão com SQL SERVER
+import pyodbc
+import pandas as pd
+
+# Parâmetros de conexão
+server = 'localhost'  # ou o IP do seu servidor SQL
+database = 'AdventureWorks'
+username = 'seu_usuario'
+password = 'sua_senha'
+
+# Conexão com o SQL Server
+conn = pyodbc.connect('DRIVER={ODBC Driver 17 for SQL Server};'
+                      'SERVER=' + server + ';'
+                      'DATABASE=' + database + ';'
+                      'UID=' + username + ';'
+                      'PWD=' + password)
+
+# Consulta SQL para extrair os dados de vendas
+query = """
+    SELECT
+        soh.OrderDate,
+        sod.LineTotal AS TotalDue,
+        sa.StateProvinceID,
+        p.Name AS ProductName
+    FROM Sales.SalesOrderHeader AS soh
+    INNER JOIN Sales.SalesOrderDetail AS sod
+        ON soh.SalesOrderID = sod.SalesOrderID
+    INNER JOIN Person.Address AS a
+        ON soh.ShipToAddressID = a.AddressID
+    INNER JOIN Person.StateProvince AS sa
+        ON a.StateProvinceID = sa.StateProvinceID
+    INNER JOIN Production.Product AS p
+        ON sod.ProductID = p.ProductID
+"""
+# Executando a consulta e carregando os dados no Pandas DataFrame
+df = pd.read_sql(query, conn)
+
+# Fechando a conexão
+conn.close()
+
+# Convertendo a coluna OrderDate para datetime
+df['OrderDate'] = pd.to_datetime(df['OrderDate'])
+
+# Adicionando colunas para Ano e Mês
+df['Year'] = df['OrderDate'].dt.year
+df['Month'] = df['OrderDate'].dt.month
+
+# Vendas totais por Região
+vendas_regiao = df.groupby('StateProvinceID')['TotalDue'].sum().reset_index()
+
+# Vendas totais por Produto
+vendas_produto = df.groupby('ProductName')['TotalDue'].sum().reset_index()
+
+# Vendas totais por Ano e Mês
+vendas_periodo = df.groupby(['Year', 'Month'])['TotalDue'].sum().reset_index()
+
+# Importando Streamlit
+import streamlit as st
+
+# Filtros interativos para seleção
+ano_inicio = st.slider('Ano de Início', min_value=df['Year'].min(), max_value=df['Year'].max(), value=df['Year'].min())
+ano_fim = st.slider('Ano de Fim', min_value=df['Year'].min(), max_value=df['Year'].max(), value=df['Year'].max())
+
+produtos_disponiveis = df['ProductName'].unique()
+produto_selecionado = st.selectbox('Selecione o Produto', options=produtos_disponiveis)
+
+regioes_disponiveis = df['StateProvinceID'].unique()
+regiao_selecionada = st.selectbox('Selecione a Região', options=regioes_disponiveis)
+
+# Filtrando os dados com base nas escolhas
+df_filtrado = df[(df['Year'] >= ano_inicio) & (df['Year'] <= ano_fim)]
+df_filtrado = df_filtrado[df_filtrado['ProductName'] == produto_selecionado]
+df_filtrado = df_filtrado[df_filtrado['StateProvinceID'] == regiao_selecionada]
+
+#Criando visualizações interativas com plotly
+import plotly.express as px
+
+# Gráfico de barras para as vendas por produto
+grafico_produto = px.bar(vendas_produto, x='ProductName', y='TotalDue', title='Vendas por Produto')
+
+# Exibindo o gráfico no Streamlit
+st.plotly_chart(grafico_produto)
+
+# Gráfico de linha para vendas ao longo do tempo
+grafico_tempo = px.line(vendas_periodo, x='Month', y='TotalDue', color='Year', title='Vendas ao Longo do Tempo')
+
+# Exibindo o gráfico no Streamlit
+st.plotly_chart(grafico_tempo)
+
+##############
+
+Dash completo:
+
+import streamlit as st
+import pandas as pd
+import pyodbc
+import plotly.express as px
+
+# Conexão com o SQL Server e extração de dados (código de conexão omitido para simplicidade)
+# df = pd.read_sql(query, conn)
+
+# Manipulação de dados
+df['OrderDate'] = pd.to_datetime(df['OrderDate'])
+df['Year'] = df['OrderDate'].dt.year
+df['Month'] = df['OrderDate'].dt.month
+vendas_produto = df.groupby('ProductName')['TotalDue'].sum().reset_index()
+vendas_periodo = df.groupby(['Year', 'Month'])['TotalDue'].sum().reset_index()
+
+# Filtros interativos
+ano_inicio = st.slider('Ano de Início', min_value=df['Year'].min(), max_value=df['Year'].max(), value=df['Year'].min())
+ano_fim = st.slider('Ano de Fim', min_value=df['Year'].min(), max_value=df['Year'].max(), value=df['Year'].max())
+produto_selecionado = st.selectbox('Selecione o Produto', options=df['ProductName'].unique())
+regiao_selecionada = st.selectbox('Selecione a Região', options=df['StateProvinceID'].unique())
+
+# Filtrando os dados com base nos filtros
+df_filtrado = df[(df['Year'] >= ano_inicio) & (df['Year'] <= ano_fim)]
+df_filtrado = df_filtrado[df_filtrado['ProductName'] == produto_selecionado]
+df_filtrado = df_filtrado[df_filtrado['StateProvinceID'] == regiao_selecionada]
+
+# Exibindo KPI: Total de Vendas no Período
+vendas_totais = df_filtrado['TotalDue'].sum()
+st.metric(label="Total de Vendas", value=f"R$ {vendas_totais:,.2f}")
+
+# Gráficos
+grafico_produto = px.bar(vendas_produto, x='ProductName', y='TotalDue', title='Vendas por Produto')
+st.plotly_chart(grafico_produto)
+
+grafico_tempo = px.line(vendas_periodo, x='Month', y='TotalDue', color='Year', title='Vendas ao Longo do Tempo')
+st.plotly_chart(grafico_tempo)
+
